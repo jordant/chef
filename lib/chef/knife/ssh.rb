@@ -403,6 +403,28 @@ class Chef
                               "fqdn").strip
       end
 
+      def pdsh(command)
+        pdsh_cmd = nil
+        %w[pdsh].each do |cmd|
+          begin
+            # Unix and Mac only
+            pdsh_cmd = shell_out!("which #{cmd}").stdout.strip
+            break
+          rescue Mixlib::ShellOut::ShellCommandFailed
+          end
+        end
+        raise Chef::Exceptions::Exec, "no command found for pdsh" unless pdsh_cmd
+
+				pdsh_cmd << " -w "
+				session.servers_for.each do |server|
+					pdsh_cmd << "#{server.host ? "#{server.host}," : server.host}"
+				end
+				pdsh_cmd << " -l jordan "
+				pdsh_cmd << " #{command}"
+        Chef::Log.debug("starting pdsh session with command: #{pdsh_cmd}")
+        exec(pdsh_cmd)
+      end
+
       def cssh
         cssh_cmd = nil
         %w[csshX cssh].each do |cmd|
@@ -462,6 +484,8 @@ class Chef
           tmux
         when "macterm"
           macterm
+        when "pdsh"
+          pdsh(@name_args[1..-1].join(" "))
         when "cssh"
           cssh
         when "csshx"
