@@ -6,9 +6,9 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -63,7 +63,7 @@ class Chef::Util::Windows::NetGroup < Chef::Util::Windows
         members = 0.chr * (nread * (PTR_SIZE * 3)) #nread * sizeof(LOCALGROUP_MEMBERS_INFO_1)
         memcpy(members, ptr, members.size)
 
-        #3 pointer fields in LOCALGROUP_MEMBERS_INFO_1, offset 2*PTR_SIZE is lgrmi1_name
+        # 3 pointer fields in LOCALGROUP_MEMBERS_INFO_1, offset 2*PTR_SIZE is lgrmi1_name
         nread.times do |i|
           offset = (i * 3) + 2
           member = lpwstr_to_s(members, offset)
@@ -90,6 +90,10 @@ class Chef::Util::Windows::NetGroup < Chef::Util::Windows
 
   def local_add_members(members)
     modify_members(members, NetLocalGroupAddMembers)
+  end
+
+  def local_delete_members(members)
+    modify_members(members, NetLocalGroupDelMembers)
   end
 
   def local_delete

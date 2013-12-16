@@ -46,7 +46,12 @@ describe Chef::Knife do
         Chef::Knife.reset_config_path!
         # pwd according to your shell is /home/someuser/prod/chef-repo, but
         # chef-repo is a symlink to /home/someuser/codes/chef-repo
-        ENV.stub!(:[]).with("PWD").and_return("/home/someuser/prod/chef-repo")
+        if Chef::Platform.windows?
+          ENV.should_receive(:[]).with("CD").and_return("/home/someuser/prod/chef-repo")
+        else
+          ENV.should_receive(:[]).with("PWD").and_return("/home/someuser/prod/chef-repo")
+        end
+
         Dir.stub!(:pwd).and_return("/home/someuser/codes/chef-repo")
       end
 
@@ -203,7 +208,6 @@ describe Chef::Knife do
         KnifeSpecs::TestYourself.option(:opt_with_default,
                                         :short => "-D VALUE",
                                         :default => "default-value")
-        Chef::Config[:knife] = {}
       end
 
       it "prefers the default value if no config or command line value is present" do
@@ -226,7 +230,6 @@ describe Chef::Knife do
         knife_command.config[:opt_with_default].should == "from-cli"
       end
     end
-
 
   end
 

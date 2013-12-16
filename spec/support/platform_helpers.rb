@@ -1,4 +1,7 @@
 require 'fcntl'
+require 'chef/mixin/shell_out'
+
+include Chef::Mixin::ShellOut
 
 def ruby_gte_20?
   RUBY_VERSION.to_f >= 2.0
@@ -32,6 +35,19 @@ def windows_win2k3?
   (host.version && host.version.start_with?("5.2"))
 end
 
+def mac_osx_106?
+  if File.exists? "/usr/bin/sw_vers"
+    result = shell_out("/usr/bin/sw_vers")
+    result.stdout.each_line do |line|
+      if line =~ /^ProductVersion:\s10.6.*$/
+        return true
+      end
+    end
+  end
+
+  false
+end
+
 # detects if the hardware is 64-bit (evaluates to true in "WOW64" mode in a 32-bit app on a 64-bit system)
 def windows64?
   windows? && ( ENV['PROCESSOR_ARCHITECTURE'] == 'AMD64' || ENV['PROCESSOR_ARCHITEW6432'] == 'AMD64' )
@@ -60,6 +76,10 @@ def freebsd?
   !!(RUBY_PLATFORM =~ /freebsd/)
 end
 
+def aix?
+  !!(RUBY_PLATFORM =~ /aix/)
+end
+
 def supports_cloexec?
   Fcntl.const_defined?('F_SETFD') && Fcntl.const_defined?('FD_CLOEXEC')
 end
@@ -86,4 +106,13 @@ def selinux_enabled?
     # installed.
     return false
   end
+end
+
+def suse?
+  File.exists?("/etc/SuSE-release")
+end
+
+def root?
+  return false if windows?
+  Process.euid == 0
 end

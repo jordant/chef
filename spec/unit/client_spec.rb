@@ -74,23 +74,13 @@ shared_examples_for Chef::Client do
   end
 
   describe "configuring output formatters" do
-    before do
-      @original_config = Chef::Config.configuration
-    end
-
-    after do
-      Chef::Config.configuration.replace(@original_config)
-    end
     context "when no formatter has been configured" do
       before do
-        Chef::Config.formatters.clear
         @client = Chef::Client.new
       end
 
       context "and STDOUT is a TTY" do
         before do
-          Chef::Config[:force_formatter] = false
-          Chef::Config[:force_logger] = false
           STDOUT.stub!(:tty?).and_return(true)
         end
 
@@ -114,7 +104,6 @@ shared_examples_for Chef::Client do
 
       context "and STDOUT is not a TTY" do
         before do
-          Chef::Config[:force_formatter] = false
           STDOUT.stub!(:tty?).and_return(false)
         end
 
@@ -137,7 +126,6 @@ shared_examples_for Chef::Client do
     context "when a formatter is configured" do
       context "with no output path" do
         before do
-          Chef::Config.formatters.clear
           @client = Chef::Client.new
           Chef::Config.add_formatter(:min)
         end
@@ -156,7 +144,6 @@ shared_examples_for Chef::Client do
 
       context "with an output path" do
         before do
-          Chef::Config.formatters.clear
           @client = Chef::Client.new
           @tmpout = Tempfile.open("rspec-for-client-formatter-selection-#{Process.pid}")
           Chef::Config.add_formatter(:min, @tmpout.path)
@@ -182,7 +169,6 @@ shared_examples_for Chef::Client do
 
     it "should identify the node and run ohai, then register the client" do
       mock_chef_rest_for_node = mock("Chef::REST (node)")
-      mock_chef_rest_for_client = mock("Chef::REST (client)")
       mock_chef_rest_for_node_save = mock("Chef::REST (node save)")
       mock_chef_runner = mock("Chef::Runner")
 
@@ -226,6 +212,7 @@ shared_examples_for Chef::Client do
       mock_chef_rest_for_node_save.should_receive(:put_rest).with("nodes/#{@fqdn}", @node).and_return(true)
 
       Chef::RunLock.any_instance.should_receive(:acquire)
+      Chef::RunLock.any_instance.should_receive(:save_pid)
       Chef::RunLock.any_instance.should_receive(:release)
 
       # Post conditions: check that node has been filled in correctly
@@ -460,20 +447,30 @@ shared_examples_for Chef::Client do
     end
   end
 
+  describe "assert_cookbook_path_not_empty" do
+    before do
+      Chef::Config[:solo] = true
+      Chef::Config[:cookbook_path] = ["/path/to/invalid/cookbook_path"]
+    end
+    context "when any directory of cookbook_path contains no cookbook" do
+      it "raises CookbookNotFound error" do
+        expect do
+          @client.send(:assert_cookbook_path_not_empty, nil)
+        end.to raise_error(Chef::Exceptions::CookbookNotFound, 'None of the cookbook paths set in Chef::Config[:cookbook_path], ["/path/to/invalid/cookbook_path"], contain any cookbooks')
+      end
+    end
+  end
+
 end
 
 describe Chef::Client do
+  Chef::Config[:client_fork] = false
   it_behaves_like Chef::Client
 end
 
 describe "Chef::Client Forked" do
   before do
-    @original_config = Chef::Config.configuration
     Chef::Config[:client_fork] = true
-  end
-
-  after do
-    Chef::Config.configuration.replace(@original_config)
   end
 
   it_behaves_like Chef::Client

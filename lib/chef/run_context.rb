@@ -152,6 +152,17 @@ class Chef
       end
     end
 
+    def load_recipe_file(recipe_file)
+      if !File.exist?(recipe_file)
+        raise Chef::Exceptions::RecipeNotFound, "could not find recipe file #{recipe_file}"
+      end
+
+      Chef::Log.debug("Loading Recipe File #{recipe_file}")
+      recipe = Chef::Recipe.new('@recipe_files', recipe_file, self)
+      recipe.from_file(recipe_file)
+      recipe
+    end
+
     # Looks up an attribute file given the +cookbook_name+ and
     # +attr_file_name+. Used by DSL::IncludeAttribute
     def resolve_attribute(cookbook_name, attr_file_name)
@@ -203,6 +214,20 @@ class Chef
     def loaded_attribute(cookbook, attribute_file)
       @loaded_attributes["#{cookbook}::#{attribute_file}"] = true
     end
+
+    ##
+    # Cookbook File Introspection
+
+    def has_template_in_cookbook?(cookbook, template_name)
+      cookbook = cookbook_collection[cookbook]
+      cookbook.has_template_for_node?(node, template_name)
+    end
+
+    def has_cookbook_file_in_cookbook?(cookbook, cb_file_name)
+      cookbook = cookbook_collection[cookbook]
+      cookbook.has_cookbook_file_for_node?(node, cb_file_name)
+    end
+
 
     private
 

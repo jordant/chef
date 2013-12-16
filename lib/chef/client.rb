@@ -146,6 +146,7 @@ class Chef
 
       @events = EventDispatch::Dispatcher.new(*event_handlers)
       @override_runlist = args.delete(:override_runlist)
+      @specific_recipes = args.delete(:specific_recipes)
       runlist_override_sanity_check!
     end
 
@@ -197,7 +198,8 @@ class Chef
           begin
             Chef::Log.debug "Forked instance now converging"
             do_run
-          rescue Exception
+          rescue Exception => e
+            Chef::Log.error(e.to_s)
             exit 1
           else
             exit 0
@@ -206,7 +208,7 @@ class Chef
         Chef::Log.debug "Fork successful. Waiting for new chef pid: #{pid}"
         result = Process.waitpid2(pid)
         handle_child_exit(result)
-        Chef::Log.debug "Forked child successfully reaped (pid: #{pid})"
+        Chef::Log.debug "Forked instance successfully reaped (pid: #{pid})"
         true
       else
         do_run
@@ -247,6 +249,11 @@ class Chef
       run_status.run_context = run_context
 
       run_context.load(@run_list_expansion)
+      if @specific_recipes
+        @specific_recipes.each do |recipe_file|
+          run_context.load_recipe_file(recipe_file)
+        end
+      end
       assert_cookbook_path_not_empty(run_context)
       run_context
     end
@@ -367,7 +374,10 @@ class Chef
     # === Returns
     # rest<Chef::REST>:: returns Chef::REST connection object
     def register(client_name=node_name, config=Chef::Config)
-      if File.exists?(config[:client_key])
+      if !config[:client_key]
+        @events.skipping_registration(client_name, config)
+        Chef::Log.debug("Client key is unspecified - skipping registration")
+      elsif File.exists?(config[:client_key])
         @events.skipping_registration(client_name, config)
         Chef::Log.debug("Client key #{config[:client_key]} is present - skipping registration")
       else
@@ -467,13 +477,15 @@ class Chef
     # === Returns
     # true:: Always returns true.
     def do_run
-      runlock = RunLock.new(Chef::Config)
+      runlock = RunLock.new(Chef::Config.lockfile)
       runlock.acquire
       # don't add code that may fail before entering this section to be sure to release lock
       begin
+        runlock.save_pid
         run_context = nil
         @events.run_start(Chef::VERSION)
         Chef::Log.info("*** Chef #{Chef::VERSION} ***")
+        Chef::Log.info "Chef-client pid: #{Process.pid}"
         enforce_path_sanity
         run_ohai
         @events.ohai_completed(node)
@@ -537,8 +549,8 @@ class Chef
       end
     end
 
-    def directory_not_empty?(path)
-      File.exists?(path) && (Dir.entries(path).size > 2)
+    def empty_directory?(path)
+      !File.exists?(path) || (Dir.entries(path).size <= 2)
     end
 
     def is_last_element?(index, object)
@@ -550,15 +562,12 @@ class Chef
         # Check for cookbooks in the path given
         # Chef::Config[:cookbook_path] can be a string or an array
         # if it's an array, go through it and check each one, raise error at the last one if no files are found
-        Chef::Log.debug "Loading from cookbook_path: #{Array(Chef::Config[:cookbook_path]).map { |path| File.expand_path(path) }.join(', ')}"
-        Array(Chef::Config[:cookbook_path]).each_with_index do |cookbook_path, index|
-          if directory_not_empty?(cookbook_path)
-            break
-          else
-            msg = "No cookbook found in #{Chef::Config[:cookbook_path].inspect}, make sure cookbook_path is set correctly."
-            Chef::Log.fatal(msg)
-            raise Chef::Exceptions::CookbookNotFound, msg if is_last_element?(index, Chef::Config[:cookbook_path])
-          end
+        cookbook_paths = Array(Chef::Config[:cookbook_path])
+        Chef::Log.debug "Loading from cookbook_path: #{cookbook_paths.map { |path| File.expand_path(path) }.join(', ')}"
+        if cookbook_paths.all? {|path| empty_directory?(path) }
+          msg = "None of the cookbook paths set in Chef::Config[:cookbook_path], #{cookbook_paths.inspect}, contain any cookbooks"
+          Chef::Log.fatal(msg)
+          raise Chef::Exceptions::CookbookNotFound, msg
         end
       else
         Chef::Log.warn("Node #{node_name} has an empty run list.") if run_context.node.run_list.empty?
